@@ -23,7 +23,8 @@ use crate::output::{Target, Writer};
 use crate::table::print_table;
 use crate::timespec::{chunks, fdsn_time, parse_duration, resolve_window};
 
-const FDSN_BASE_URL: &str = "https://fdsnws.network.quakesaver.net";
+/// Shared with the live view, which polls the same service.
+pub(crate) const FDSN_BASE_URL: &str = "https://fdsnws.network.quakesaver.net";
 
 /// Long downloads are split into requests of at most this much data, cut at UTC
 /// midnight so they line up with the day files of an SDS archive.

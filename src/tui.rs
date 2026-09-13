@@ -20,7 +20,7 @@ use ratatui::widgets::{Axis, Block, Borders, Chart, Dataset, GraphType, Paragrap
 use ratatui::{DefaultTerminal, Frame};
 use tokio::sync::mpsc::Receiver;
 
-use crate::seedlink::{Chunk, Source, Update};
+use crate::stream::{Chunk, Update};
 
 /// How often the view is redrawn.
 const FRAME_INTERVAL: Duration = Duration::from_millis(50);
@@ -171,7 +171,8 @@ fn seconds(at: NaiveDateTime) -> f64 {
 
 /// The state the view draws from.
 struct App {
-    source: Source,
+    /// What to call the sensor and the route in the header.
+    source: String,
     status: Status,
     traces: BTreeMap<String, Trace>,
     window: f64,
@@ -187,7 +188,7 @@ struct App {
 }
 
 impl App {
-    fn new(source: Source, window: f64) -> Self {
+    fn new(source: String, window: f64) -> Self {
         App {
             source,
             status: Status::Connecting,
@@ -291,7 +292,7 @@ impl App {
 fn header(app: &App) -> Line<'static> {
     let mut spans = vec![
         Span::styled(
-            app.source.label(),
+            app.source.clone(),
             Style::default().add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
@@ -517,7 +518,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
 /// Run the live view until the user closes it.
 pub(crate) async fn run(
-    source: Source,
+    source: String,
     window: f64,
     mut updates: Receiver<Update>,
     terminal: &mut DefaultTerminal,
@@ -650,7 +651,7 @@ mod tests {
 
     #[test]
     fn old_samples_are_forgotten_once_they_scroll_out() {
-        let mut app = App::new(Source::from_arg("A3B7K9Q2").unwrap(), 60.0);
+        let mut app = App::new("A3B7K9Q2 · websocket".to_string(), 60.0);
         app.apply(Update::Data(chunk("HHZ", 0, 1.0, vec![1.0; 10])));
         // A record arriving well past the buffer's reach retires the old one.
         app.apply(Update::Data(chunk("HHZ", 0, 1.0, vec![2.0; 10])));
@@ -663,7 +664,7 @@ mod tests {
 
     #[test]
     fn each_channel_gets_its_own_panel() {
-        let mut app = App::new(Source::from_arg("A3B7K9Q2").unwrap(), 60.0);
+        let mut app = App::new("A3B7K9Q2 · websocket".to_string(), 60.0);
         app.apply(Update::Data(chunk("HHZ", 0, 100.0, vec![1.0])));
         app.apply(Update::Data(chunk("HHN", 0, 100.0, vec![1.0])));
         app.apply(Update::Data(chunk("HHZ", 1, 100.0, vec![1.0])));
@@ -674,7 +675,7 @@ mod tests {
 
     #[test]
     fn the_window_cannot_be_stretched_past_what_is_kept() {
-        let mut app = App::new(Source::from_arg("A3B7K9Q2").unwrap(), 60.0);
+        let mut app = App::new("A3B7K9Q2 · websocket".to_string(), 60.0);
         for _ in 0..20 {
             app.resize_window(2.0);
         }
@@ -688,7 +689,7 @@ mod tests {
 
     #[test]
     fn focus_wraps_around_the_channels() {
-        let mut app = App::new(Source::from_arg("A3B7K9Q2").unwrap(), 60.0);
+        let mut app = App::new("A3B7K9Q2 · websocket".to_string(), 60.0);
         for channel in ["HHZ", "HHN", "HHE"] {
             app.apply(Update::Data(chunk(channel, 0, 100.0, vec![1.0])));
         }
@@ -712,7 +713,7 @@ mod tests {
 
     #[test]
     fn quitting_is_spelled_several_ways() {
-        let mut app = App::new(Source::from_arg("A3B7K9Q2").unwrap(), 60.0);
+        let mut app = App::new("A3B7K9Q2 · websocket".to_string(), 60.0);
         let press = |code| KeyEvent::new(code, KeyModifiers::NONE);
 
         assert!(app.handle_key(press(KeyCode::Char('q'))));

@@ -74,20 +74,34 @@ pub enum Commands {
     },
     /// Watch a sensor's waveforms live in the terminal
     ///
-    /// Streams over SeedLink, either from the network server or, when given an
-    /// address, straight from a sensor on your own network.
+    /// Streams through the backend over a websocket, the same route the web
+    /// frontend takes. `--seedlink` and `--fdsn` pick a different one. A sensor
+    /// named by address on your own network is always read straight from it,
+    /// over SeedLink.
     Tui {
-        /// The sensor to watch: a UID (`A3B7K9Q2`), streamed from the network
-        /// server, or the address of a sensor on your LAN (`192.168.178.55`),
-        /// streamed from the sensor itself
+        /// The sensor to watch: a UID (`A3B7K9Q2`), or the address of a
+        /// sensor on your LAN (`192.168.178.55`), which is always streamed
+        /// from the sensor itself
         sensor: String,
+        /// Stream over SeedLink rather than the backend websocket
+        ///
+        /// Uses the backend's relay for a sensor named by UID, and the
+        /// sensor's own server for one named by address.
+        #[arg(long, group = "transport")]
+        seedlink: bool,
+        /// Stream by polling the FDSN archive rather than the backend websocket
+        ///
+        /// Needs nothing of the sensor, but runs as far behind as the archive
+        /// does.
+        #[arg(long, group = "transport")]
+        fdsn: bool,
         /// Seconds of signal to keep on screen
         #[arg(short, long, default_value_t = DEFAULT_WINDOW)]
         window: f64,
-        /// The SeedLink port to connect to
+        /// The SeedLink port to connect to, with --seedlink
         #[arg(short, long, default_value_t = DEFAULT_PORT)]
         port: u16,
-        /// The network SeedLink server to use for sensors named by UID
+        /// The SeedLink relay to use for sensors named by UID, with --seedlink
         #[arg(long, default_value = "seedlink.network.quakesaver.net")]
         server: String,
     },

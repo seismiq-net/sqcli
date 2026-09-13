@@ -1,22 +1,26 @@
 mod api;
 mod cli;
+mod fdsn;
 mod mseed;
 mod output;
 mod samples;
 mod scan;
 mod seedlink;
+mod stream;
 mod table;
 mod timespec;
 mod tui;
 mod waveforms;
+mod websocket;
 
 use crate::scan::scan;
 use clap::Parser;
 
-use crate::api::{print_sensors, trigger_action};
+use crate::api::{print_sensors, trigger_action, SMIQClient};
 use crate::cli::Commands;
+use crate::stream::Transport;
 use crate::table::print_table;
-use eyre::Result;
+use eyre::{bail, eyre, Result};
 use std::net::Ipv4Addr;
 
 #[tokio::main]
@@ -69,11 +73,19 @@ async fn main() -> Result<()> {
 
         Commands::Tui {
             sensor,
+            seedlink,
+            fdsn,
             window,
             port,
             server,
         } => {
-            watch(&sensor, window, port, server).await?;
+            let chosen = match (seedlink, fdsn) {
+                (true, _) => Some(Transport::SeedLink),
+                (_, true) => Some(Transport::Fdsn),
+                // clap keeps the two flags from being given together.
+                _ => None,
+            };
+            watch(&sensor, chosen, window, port, server).await?;
         }
 
         Commands::Action { action, sensor_uid } => {
@@ -88,18 +100,74 @@ async fn main() -> Result<()> {
 const UPDATE_QUEUE: usize = 256;
 
 /// Open the live view on one sensor.
-async fn watch(sensor: &str, window: f64, port: u16, server: String) -> Result<()> {
+async fn watch(
+    sensor: &str,
+    chosen: Option<Transport>,
+    window: f64,
+    port: u16,
+    server: String,
+) -> Result<()> {
     let source = seedlink::Source::from_arg(sensor)?;
+    let local = matches!(source, seedlink::Source::Sensor { .. });
+
+    // A sensor named by address is one on this network, and the backend has no
+    // way to reach it; its own SeedLink server is the only way in.
+    let transport = match chosen {
+        Some(transport) => transport,
+        None if local => Transport::SeedLink,
+        None => Transport::WebSocket,
+    };
+    if local && transport.needs_uid() {
+        bail!(
+            "{} is an address on your network, and --{} goes through the backend, \
+             which knows sensors by UID. Drop the flag to read the sensor directly, \
+             or name it by its UID.",
+            sensor,
+            transport.name()
+        );
+    }
+
+    // Everything that needs an account is settled before the screen is taken
+    // over, so a missing password prints plainly instead of into a raw
+    // terminal. SeedLink asks for no account at all.
+    let client = match transport {
+        Transport::WebSocket | Transport::Fdsn => {
+            api::credentials().map_err(|missing| {
+                eyre!(
+                    "{} goes through the backend, which needs an account: {}",
+                    transport.name(),
+                    missing
+                )
+            })?;
+            Some(SMIQClient::new().authenticate().await)
+        }
+        Transport::SeedLink => None,
+    };
 
     // Logging goes to standard error, which is the same screen the view draws
     // on, so it is silenced for as long as the view is up.
     log::set_max_level(log::LevelFilter::Off);
 
     let (sender, receiver) = tokio::sync::mpsc::channel(UPDATE_QUEUE);
-    let reader = tokio::spawn(seedlink::stream(source.clone(), server, port, sender));
+    let uid = sensor.trim().to_string();
+    let reader = match transport {
+        Transport::WebSocket => tokio::spawn(websocket::stream(
+            client.expect("a websocket needs an account"),
+            uid,
+            websocket::default_url(),
+            sender,
+        )),
+        Transport::Fdsn => tokio::spawn(fdsn::stream(
+            client.expect("the archive needs an account"),
+            uid,
+            sender,
+        )),
+        Transport::SeedLink => tokio::spawn(seedlink::stream(source, server, port, sender)),
+    };
 
+    let label = format!("{} · {}", sensor.trim(), transport.name());
     let mut terminal = ratatui::init();
-    let outcome = tui::run(source, window, receiver, &mut terminal).await;
+    let outcome = tui::run(label, window, receiver, &mut terminal).await;
     ratatui::restore();
 
     reader.abort();

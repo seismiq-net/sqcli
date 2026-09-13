@@ -295,12 +295,23 @@ fn present_sensors(rows: &[SensorRow]) {
     );
 }
 
-async fn get_auth_token() -> Result<String, Box<dyn std::error::Error>> {
+/// The account to log in with, from the environment or a local `.env`.
+///
+/// Separate from the login itself so a command can find out whether it has
+/// credentials before it takes over the screen.
+pub(crate) fn credentials() -> Result<(String, String), String> {
     if let Err(e) = dotenvy::dotenv() {
         debug!("Failed to read .env file. Error: {}", e);
     }
-    let username = std::env::var("SEISMIQ_USERNAME").expect("SEISMIQ_USERNAME not set");
-    let password = std::env::var("SEISMIQ_PASSWORD").expect("SEISMIQ_PASSWORD not set");
+    let read = |name: &str| {
+        std::env::var(name)
+            .map_err(|_| format!("{} is not set; see the README for how to sign in", name))
+    };
+    Ok((read("SEISMIQ_USERNAME")?, read("SEISMIQ_PASSWORD")?))
+}
+
+async fn get_auth_token() -> Result<String, Box<dyn std::error::Error>> {
+    let (username, password) = credentials()?;
     let configuration = Configuration {
         base_path: BASE_URL.to_string(),
         ..Default::default()

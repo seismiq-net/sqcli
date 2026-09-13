@@ -18,7 +18,6 @@
 
 use std::time::Duration;
 
-use chrono::NaiveDateTime;
 use eyre::{bail, eyre, Context, Result};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
@@ -26,6 +25,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::mseed::parse_header;
 use crate::samples::decode;
+use crate::stream::{Chunk, Update};
 
 /// The port both the network server and the sensors listen on.
 pub(crate) const DEFAULT_PORT: u16 = 18000;
@@ -105,40 +105,6 @@ impl Source {
             Source::Sensor { .. } => "*",
         }
     }
-
-    /// How to describe this source in the interface.
-    pub(crate) fn label(&self) -> String {
-        match self {
-            Source::Network { uid } => format!("{} (network)", uid),
-            Source::Sensor { host } => format!("{} (sensor)", host),
-        }
-    }
-}
-
-/// One channel's worth of samples, as a single record carried them.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Chunk {
-    /// `NET.STA.LOC.CHAN`, the way the rest of the CLI names a stream.
-    pub(crate) stream_id: String,
-    pub(crate) channel: String,
-    pub(crate) start: NaiveDateTime,
-    pub(crate) sample_rate: f64,
-    pub(crate) samples: Vec<f64>,
-}
-
-/// What the reader tells the interface about.
-#[derive(Clone, Debug)]
-pub(crate) enum Update {
-    /// The handshake went through; the server named itself.
-    Connected {
-        server: String,
-        station: String,
-    },
-    Data(Chunk),
-    /// Something worth showing that did not end the connection.
-    Notice(String),
-    /// The connection is gone and the reader is about to dial again.
-    Disconnected(String),
 }
 
 /// Send one command and read the `OK` the server answers with.

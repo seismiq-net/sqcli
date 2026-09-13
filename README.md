@@ -44,8 +44,8 @@ folder to `PATH`). You can then run `sqcli` from PowerShell or Command Prompt.
 
 # Usage
 
-The `sensors`, `waveforms` and `action` commands talk to the SeismiQ cloud API
-and need credentials. Set them via two environment variables (a local `.env`
+The `sensors`, `waveforms`, `tui` and `action` commands talk to the SeismiQ
+cloud API and need credentials. Set them via two environment variables (a local `.env`
 file is also picked up):
 
 ```shell
@@ -54,8 +54,8 @@ export SEISMIQ_PASSWORD="your password"
 ```
 
 The `detect` command talks directly to devices on your LAN and needs no
-authentication, and neither does `tui`: SeedLink recognises you by the address
-you connect from (see [`tui`](#tui-sensor)).
+authentication. Neither does `tui` when it reads a sensor on your own network,
+or over SeedLink (see [`tui`](#tui-sensor)).
 
 Get a list of available commands:
 
@@ -221,17 +221,16 @@ Once written, an archive can be read by any SDS-aware tool, e.g. SeisComP's
 ### `tui <sensor>`
 
 Watch a sensor's waveforms live in the terminal, one stacked panel per channel.
-Data arrives over [SeedLink], which pushes records as they are recorded, so this
-is the live counterpart to `waveforms` — that fetches a window that has already
-passed, this follows one as it happens.
+This is the live counterpart to `waveforms`: that fetches a window that has
+already passed, this follows one as it happens.
 
 ```shell
 sqcli tui A3B7K9Q2
 ```
 
 ```text
-A3B7K9Q2 (network)  live  A3B7K9Q2  SeedLink v3.0 [QuakeSaver v1.0.0]  ·  201 packets  ·  0.5s behind
-┌ HHZ  100 Hz  ±41.8k ─────────────────────────────────────────────────────┐
+A3B7K9Q2 · websocket  live  A3B7K9Q2  backend websocket  ·  201 packets  ·  0.4s behind
+┌ EHZ  100 Hz  ±41.8k ─────────────────────────────────────────────────────┐
 │                     ⢠⡀                                                   │
 │    ⢰⣼⡀⣾⡀⣾ ⣾ ⡇⢸⡆⢸⡆⣸⡆⣸⣆⣧⢠⣧⢸⣿⢰⡇⢰⡇⣾ ⣿ ⣷ ⣷ ⣷⢀⡇⣸⡆⣸⡄⣼⡄⣼⡀⣾⡀⣾ ⣾ ⣷ ⣷ ⢰⡇⣸⡆⣼⡄⣾⡀│
 │    ⢸⡇⢿⠁⢿⠁⢿ ⢿⢸⡇⢸⠇⢹⠇⢹⠘⡟⠘⡟⢸⣼⠸⡇⠸⡇⢸ ⢿ ⣿ ⡿ ⡿⢹⠇⢹⠃⢻⠃⢿⠁⢿⠁⢿ ⢿ ⡿ ⡿ ⢹⠇⢻⠃⢿⠁⢿│
@@ -239,13 +238,13 @@ A3B7K9Q2 (network)  live  A3B7K9Q2  SeedLink v3.0 [QuakeSaver v1.0.0]  ·  201 p
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### Which sensor, and where from
+#### Which sensor
 
 The argument is either a **sensor UID** or the **address of a sensor on your
-network**, and that choice picks the server:
+network**:
 
 ```shell
-sqcli tui A3B7K9Q2          # through the network SeedLink server
+sqcli tui A3B7K9Q2          # through the backend
 sqcli tui 192.168.178.55    # straight from the sensor on your LAN
 sqcli tui qssensor.local    # the same, by name
 ```
@@ -254,14 +253,44 @@ Sensor UIDs are letters and digits, so anything containing a dot or a colon is
 read as an address. `sqcli detect` prints the addresses to use, and an address
 may carry its own port (`192.168.178.55:18010`).
 
-Neither route takes a password, but each has a precondition:
+#### Which route the data takes
 
-- **By UID**, the network server decides what to hand out from the address you
-  connect from. Register your public IP under *Waveforms > Network SeedLink
-  Server* in the web interface, or `sqcli` will report that the server serves it
-  no sensors.
-- **By address**, the sensor serves anyone who can reach it, but only once its
-  own server is running — start it under *Waveform access > SeedLink Server*.
+Three routes carry the same waveforms. Unless you say otherwise, `sqcli` uses
+the **websocket** through the backend — the same path the web interface takes.
+
+```shell
+sqcli tui A3B7K9Q2              # websocket, the default
+sqcli tui A3B7K9Q2 --seedlink   # through the SeedLink relay instead
+sqcli tui A3B7K9Q2 --fdsn       # by polling the archive instead
+```
+
+| Route | Needs | Good for |
+| --- | --- | --- |
+| websocket *(default)* | your account | anything your account can read, from anywhere |
+| `--seedlink` | your IP registered, or a LAN sensor | standard protocol, lowest latency, no account for a LAN sensor |
+| `--fdsn` | your account | a sensor that is not streaming; runs behind the archive |
+
+**websocket** asks the sensor to start streaming and keeps asking while the view
+is open, then receives the frames the backend relays. A sensor stops streaming a
+minute after it was last asked, so closing the view stops it by itself.
+
+**`--seedlink`** speaks [SeedLink], the usual seismological streaming protocol.
+For a UID it goes through the relay at `seedlink.network.quakesaver.net`, which
+decides what to hand out from the address you connect from — register your
+public IP under *Waveforms > Network SeedLink Server*, or `sqcli` will report
+that the relay serves it no sensors. `--server` and `--port` point it elsewhere.
+
+**`--fdsn`** asks the same FDSN service `waveforms` downloads from, over and
+over. It needs nothing of the sensor, so it works for one that is not streaming
+at all, but it only ever shows what the archive has already stored.
+
+A sensor named by **address** is always read straight from it over SeedLink: the
+backend reaches sensors by UID, so it has no way to a machine on your network.
+That sensor serves anyone who can reach it, but only once its own server is
+running — start it under *Waveform access > SeedLink Server*.
+
+The `--seedlink` and `--fdsn` routes are exclusive; the header names whichever
+one is in use.
 
 #### Keys
 

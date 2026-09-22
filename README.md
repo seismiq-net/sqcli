@@ -39,8 +39,11 @@ sudo mv sqcli-osx /usr/local/bin/sqcli
 
 ## Windows
 
-Download `sqcli.exe` and place it in a folder that is on your `PATH` (or add its
-folder to `PATH`). You can then run `sqcli` from PowerShell or Command Prompt.
+Download `sqcli.exe` for Intel and AMD PCs, or `sqcli-arm64.exe` for ARM PCs
+(Snapdragon laptops, or Windows in Parallels on an Apple Silicon Mac). Rename
+`sqcli-arm64.exe` to `sqcli.exe`, then place it in a folder that is on your
+`PATH` (or add its folder to `PATH`). You can then run `sqcli` from PowerShell
+or Command Prompt.
 
 # Usage
 

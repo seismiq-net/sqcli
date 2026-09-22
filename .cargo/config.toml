@@ -1,0 +1,5 @@
+# Link the C runtime into Windows builds. Otherwise sqcli.exe needs
+# VCRUNTIME140.dll, which a fresh Windows install does not have, and
+# PowerShell then starts it without printing anything at all.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]

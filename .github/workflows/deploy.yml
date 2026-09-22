@@ -42,12 +42,20 @@ jobs:
       - name: Build
         run: cargo deb
       - name: Rename artifact
-        run: cp target/debian/sqcli_*.deb target/debian/sqcli-${{ github.ref_name }}.deb
+        env:
+          # Slashes in a branch name would read as directories in the file name
+          # and are not allowed in an artifact name either, so they become
+          # dashes: refs/heads/fix/deb -> sqcli-fix-deb.deb
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          deb="sqcli-${REF_NAME//\//-}.deb"
+          echo "DEB_NAME=$deb" >> "$GITHUB_ENV"
+          cp target/debian/sqcli_*.deb "target/debian/$deb"
       - name: upload artefact
         uses: actions/upload-artifact@v4
         with:
-          name: sqcli-${{ github.ref_name }}.deb
-          path: target/debian/sqcli-${{ github.ref_name }}.deb
+          name: ${{ env.DEB_NAME }}
+          path: target/debian/${{ env.DEB_NAME }}
           merge-multiple: true
       - name: Release
         uses: softprops/action-gh-release@v1

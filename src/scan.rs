@@ -21,8 +21,16 @@ pub async fn scan(interface: Option<String>) -> Vec<(Ipv4Addr, String)> {
 
 /// Probe a single host. Returns `Some((address, body))` only when the host
 /// actually answered on `port`; `None` means no device there.
-async fn probe_host(address: Ipv4Addr, port: u16) -> Option<(Ipv4Addr, String)> {
-    match reqwest::get(format!("http://{}:{}", address, port)).await {
+async fn probe_host(
+    client: reqwest::Client,
+    address: Ipv4Addr,
+    port: u16,
+) -> Option<(Ipv4Addr, String)> {
+    match client
+        .get(format!("http://{}:{}", address, port))
+        .send()
+        .await
+    {
         Ok(response) => response.text().await.ok().map(|body| (address, body)),
         Err(e) => {
             debug!("error: {}", e);
@@ -32,12 +40,17 @@ async fn probe_host(address: Ipv4Addr, port: u16) -> Option<(Ipv4Addr, String)> 
 }
 
 async fn probe_ip_range(ip_range: Ipv4Cidr) -> Vec<(Ipv4Addr, String)> {
+    // One client for all hosts. `reqwest::get` builds a client per call, which
+    // loads the TLS roots each time, and `join_all` builds them one after the
+    // other while every timeout is already running: hosts past the first few
+    // dozen timed out before their request was even sent.
+    let client = reqwest::Client::new();
     let mut futures = Vec::new();
     for ip in ip_range {
         debug!("probing {:?}", ip);
         futures.push(timeout(
-            Duration::from_millis(1000),
-            probe_host(ip.address(), 27740),
+            Duration::from_millis(2000),
+            probe_host(client.clone(), ip.address(), 27740),
         ));
     }
     let results = join_all(futures).await;

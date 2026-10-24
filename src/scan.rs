@@ -79,10 +79,12 @@ fn get_local_ip(interface: Option<String>) -> IpAddr {
         None => local_ip().unwrap(),
         Some(interface) => {
             let network_interfaces = list_afinet_netifas().unwrap();
+            // An interface is listed once per address (e.g. an IPv6 link-local
+            // next to its IPv4 one); the scan needs the IPv4 address.
             let (_, ip) = network_interfaces
                 .iter()
-                .find(|(name, _)| *name == interface)
-                .expect("failed");
+                .find(|(name, ip)| *name == interface && ip.is_ipv4())
+                .unwrap_or_else(|| panic!("no IPv4 address found on interface {}", interface));
             *ip
         }
     };

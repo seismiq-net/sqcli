@@ -230,7 +230,7 @@ fn print_device_table(devices: &[Device]) {
         .map(|d| {
             vec![
                 d.address.to_string(),
-                d.uuid.clone(),
+                d.uuid.clone().to_uppercase(),
                 d.version.clone(),
                 d.device_type.clone(),
             ]
